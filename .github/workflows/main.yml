@@ -1,24 +1,28 @@
-name: Check Events
+name: Run Typeform Bot
+
 on:
-  workflow_dispatch:
+  workflow_dispatch: # يتيح لك تشغيل السكريبت يدويًا في أي وقت من زر التبويب Actions
+  schedule:
+    - cron: '0 8 * * *' # مثال: يعمل تلقائيًا كل يوم الساعة 8:00 صباحًا بتوقيت UTC
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
 
-      - name: Setup Node
-        uses: actions/setup-node@v3
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm install
 
-      - name: Run Scanner
-        env:
-          U_MAIL: ${{ secrets.U_MAIL }}
-          U_PASS: ${{ secrets.U_PASS }}
-        run: node app.js
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run script
+        run: node fill-typeform.js
