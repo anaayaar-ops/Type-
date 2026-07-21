@@ -1,13 +1,12 @@
 {
-  "name": "wolf-event-scanner",
+  "name": "typeform-automation",
   "version": "1.0.0",
-  "type": "module",
-  "main": "app.js",
-  "dependencies": {
-    "wolf.js": "^2.1.0",
-    "dotenv": "^16.0.0"
-  },
+  "description": "Typeform automation bot using Playwright",
+  "main": "fill-typeform.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node fill-typeform.js"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
   }
 }
