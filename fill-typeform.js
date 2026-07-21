@@ -5,8 +5,8 @@ const { chromium } = require('playwright');
 // ==================== الإعدادات والبيانات ====================
 const config = {
   "formUrl": "https://survey-poll.typeform.com/to/JTsKMIEB",
-  "membershipNumber": "2",
-  "channelMembershipNumber": "1010",
+  "membershipNumber": "224",
+  "channelMembershipNumber": "18432094",
   "isPartOfWeeklyTheme": true,
   "events": [
     {
