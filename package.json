@@ -1,8 +1,9 @@
 {
   "name": "typeform-automation",
   "version": "1.0.0",
-  "description": "Typeform automation bot using Playwright",
+  "description": "Typeform automation bot using Playwright and WOLF",
   "main": "fill-typeform.js",
+  "type": "module",
   "scripts": {
     "start": "node fill-typeform.js"
   },
