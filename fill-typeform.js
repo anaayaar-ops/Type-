@@ -78,8 +78,9 @@ async function submitEventsToForm(events) {
         return;
     }
 
-    console.log(`\n🚀 تم العثور على (${events.length}) فعالية. بدء الرفع التلقائي للنموذج...`);
-    const browser = await chromium.launch({ headless: false });
+    console.log(`
+🚀 تم العثور على (${events.length}) فعالية. بدء الرفع التلقائي للنموذج...`);
+    const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const topicLetters = ['A', 'B', 'C'];
 
@@ -89,7 +90,8 @@ async function submitEventsToForm(events) {
         const [year, month, day] = event.dateStr.split('-');
 
         const page = await context.newPage();
-        console.log(`\n----------------------------------------`);
+        console.log(`
+----------------------------------------`);
         console.log(`[رفع الفعالية ${i + 1} من ${events.length}] 🆔 ID: ${event.id} | ⏰ الوقت: ${event.timeStr}`);
 
         try {
@@ -252,9 +254,11 @@ async function submitEventsToForm(events) {
     }
 
     await browser.close();
-    console.log('\n========================================');
+    console.log('
+========================================');
     console.log('🏁 تم الانتهاء من رفع جميع الفعاليات بنجاح تام.');
-    console.log('========================================\n');
+    console.log('========================================
+');
 }
 
 // الاتصال بمنصة WOLF والبدء بالخطوة الأولى
@@ -312,7 +316,8 @@ service.on('ready', async () => {
         // ترتيب الفعاليات تصاعدياً حسب الوقت
         foundEvents.sort((a, b) => a.start - b.start);
 
-        console.log(`\n📋 تم العثور على ${foundEvents.length} فعالية مطابقة.`);
+        console.log(`
+📋 تم العثور على ${foundEvents.length} فعالية مطابقة.`);
 
         // الانتقال للخطوة الثانية وتمرير القائمة المستخرجة لملء النماذج
         await submitEventsToForm(foundEvents);
