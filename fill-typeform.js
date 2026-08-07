@@ -4,15 +4,16 @@ import { chromium } from 'playwright';
 const { WOLF } = wolfjs;
 const service = new WOLF();
 
-// ==================== ⚙️ البيانات الثابتة ====================
+// ==================== ⚙️ البيانات الثابتة (عدّل حسب حاجتك) ====================
 const TARGET_GROUP = 18432094;
-const TARGET_DATE = "2026-08-10";           // التاريخ المطلوب
+const TARGET_DATE = "2026-08-10";           // التاريخ المطلوب (YYYY-MM-DD)
 const TARGET_MEMBER_ID = 80055399;          // العضوية التي رفعت الفعالية
 const MEMBERSHIP_NUMBER = "224";            // رقم عضويتك الأساسي في النموذج
 const FORM_URL = "https://survey-poll.typeform.com/to/JTsKMIEB";
-const TYPE_DELAY = 40;
-// =============================================================
+const TYPE_DELAY = 40;                      // تأخير بين الأحرف (مللي)
+// =============================================================================
 
+// 🔐 البريد وكلمة المرور تؤخذ من متغيرات البيئة (GitHub Secrets)
 const USER_EMAIL = process.env.U_MAIL;
 const USER_PASSWORD = process.env.U_PASS;
 
@@ -21,7 +22,7 @@ if (!USER_EMAIL || !USER_PASSWORD) {
     process.exit(1);
 }
 
-// ==================== دوال مساعدة ====================
+// باقي الكود (نفس الكود السابق مع headless: true و زمن 500ms بين الفعاليات)
 const formatTime = (date) => {
     const h = date.getUTCHours();
     const m = String(date.getUTCMinutes()).padStart(2, '0');
@@ -41,14 +42,14 @@ const fillActiveQuestion = async (page, value, { pressEnterAfter = true, waitAft
     try {
         await page.waitForFunction(() => {
             const el = document.activeElement;
-            return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.getAttribute('contenteditable') === 'true');
-        }, { timeout: 8000 });
-        const active = page.locator('input:focus, textarea:focus, [contenteditable="true"]:focus').first();
+            return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+        }, { timeout: 5000 });
+        const active = page.locator('input:focus, textarea:focus').first();
         await active.waitFor({ state: 'visible', timeout: 5000 });
     } catch (e) {
-        console.log('⚠️ لم يتم رصد فوكس تلقائي، أحاول الضغط على آخر حقل ظاهر...');
-        const fallback = page.locator('input:visible, textarea:visible, [contenteditable="true"]:visible').last();
-        await fallback.click({ timeout: 8000 });
+        console.log('⚠️ لم يتم رصد فوكس تلقائي، أحاول أضغط على آخر حقل ظاهر...');
+        const fallback = page.locator('input:visible, textarea:visible').last();
+        await fallback.click({ timeout: 5000 });
     }
     await typeReal(page, value);
     if (pressEnterAfter) {
@@ -68,73 +69,6 @@ const clickOkButton = async (page) => {
     }
 };
 
-const fillDateField = async (page, placeholderPart, value) => {
-    const selectors = [
-        `input[placeholder*="${placeholderPart}" i]:visible`,
-        `input[placeholder*="${placeholderPart.toLowerCase()}" i]:visible`
-    ];
-    for (const selector of selectors) {
-        try {
-            const input = await page.waitForSelector(selector, { timeout: 4000 });
-            await input.click({ clickCount: 3 });
-            await page.keyboard.press('Backspace');
-            await input.fill(value);
-            await page.waitForTimeout(200);
-            const actual = await input.inputValue();
-            if (actual === value) return true;
-            // إعادة المحاولة مرة أخرى
-            await input.click({ clickCount: 3 });
-            await page.keyboard.press('Backspace');
-            await input.fill(value);
-            await page.waitForTimeout(200);
-            return true;
-        } catch (e) { /* جرب المحدد التالي */ }
-    }
-    console.log(`⚠️ لم يتم إيجاد حقل placeholder="${placeholderPart}"، أحاول الكتابة مباشرة...`);
-    try {
-        await page.keyboard.type(value);
-        await page.keyboard.press('Tab');
-        await page.waitForTimeout(200);
-        return true;
-    } catch (e2) {
-        console.log(`❌ فشلت محاولة تعبئة ${placeholderPart}.`);
-        return false;
-    }
-};
-
-/**
- * دالة جديدة للانتظار حتى ظهور أي عنصر إدخال في النموذج
- * تستخدم عدة محددات وتعيد العنصر الأول الذي يظهر
- */
-const waitForAnyInput = async (page, timeout = 15000) => {
-    const selectors = [
-        'input:visible',
-        'textarea:visible',
-        '[contenteditable="true"]:visible',
-        '[role="textbox"]:visible',
-        'div[contenteditable="true"]:visible'
-    ];
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-        for (const selector of selectors) {
-            try {
-                const element = await page.$(selector);
-                if (element) {
-                    // تحقق من أنه مرئي وقابل للتفاعل
-                    const isVisible = await element.isVisible();
-                    if (isVisible) {
-                        return element;
-                    }
-                }
-            } catch (e) { /* تجاهل */ }
-        }
-        await page.waitForTimeout(500);
-    }
-    return null;
-};
-
-// ==================== الدالة الرئيسية ====================
-
 async function submitEventsToForm(events) {
     if (events.length === 0) {
         console.log("⚠️ لا توجد فعاليات مطابقة في هذا التاريخ ليتم رفعها.");
@@ -142,11 +76,11 @@ async function submitEventsToForm(events) {
     }
 
     console.log(`\n🚀 تم العثور على (${events.length}) فعالية. بدء الرفع التلقائي للنموذج...`);
-    const browser = await chromium.launch({
+    const browser = await chromium.launch({ 
         headless: true,
         args: ['--no-sandbox']
     });
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const context = await browser.newContext();
     const topicLetters = ['A', 'B', 'C'];
 
     for (let i = 0; i < events.length; i++) {
@@ -161,36 +95,15 @@ async function submitEventsToForm(events) {
         try {
             console.log('  ↳ [الخطوة 0] فتح صفحة النموذج...');
             await page.goto(FORM_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(1000);
+            await page.waitForTimeout(600);
 
-            // محاولة الضغط على أي زر بدء (مثل "سجل برنامجك الآن")
-            const startButtonTexts = ['سجل برنامجك الآن', 'Start', 'Begin', 'Get started', 'ابدأ'];
-            for (const text of startButtonTexts) {
-                try {
-                    const btn = page.getByText(text, { exact: false }).first();
-                    if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
-                        await btn.click();
-                        console.log('  ↳ تم الضغط على زر البدء.');
-                        await page.waitForTimeout(800);
-                        break;
-                    }
-                } catch (e) { /* تجاهل */ }
-            }
+            try {
+                const startButton = page.getByText('سجل برنامجك الآن', { exact: false });
+                await startButton.waitFor({ timeout: 3000 });
+                await startButton.click();
+                await page.waitForTimeout(400);
+            } catch (e) {}
 
-            // انتظر ظهور أي حقل إدخال باستخدام الدالة الجديدة
-            console.log('  ↳ في انتظار ظهور حقول النموذج...');
-            const inputElement = await waitForAnyInput(page, 15000);
-            if (!inputElement) {
-                // في حال عدم العثور على أي حقل، نأخذ لقطة ونطبع جزء من الـ HTML للتشخيص
-                const screenshot = await page.screenshot({ path: `debug_${event.id}.png` });
-                console.log(`⚠️ لم يتم العثور على أي حقل إدخال في النموذج. تم حفظ لقطة للصفحة: debug_${event.id}.png`);
-                const html = await page.content();
-                console.log('📄 أول 500 حرف من الـ HTML:', html.substring(0, 500));
-                throw new Error('لم يتم العثور على حقل إدخال في النموذج');
-            }
-            console.log('  ↳ تم العثور على حقل إدخال.');
-
-            // بقية الخطوات (كما هي)
             console.log('  ↳ [الخطوة 1] رقم العضوية...');
             await fillActiveQuestion(page, MEMBERSHIP_NUMBER);
 
@@ -200,45 +113,61 @@ async function submitEventsToForm(events) {
             console.log('  ↳ [الخطوة 3] الثيم الأسبوعي (نعم)...');
             try {
                 const option = page.getByText('نعم', { exact: false }).first();
-                if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
-                    await option.click();
-                } else {
-                    await page.keyboard.press('a');
-                }
+                await option.click();
             } catch (e) {
                 await page.keyboard.press('a');
             }
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(400);
 
             console.log(`  ↳ [الخطوة 4] اختيار المواضيع (الحرف ${currentLetter})...`);
             try {
                 const badge = page.getByText(currentLetter.toUpperCase(), { exact: true }).first();
-                if (await badge.isVisible({ timeout: 3000 }).catch(() => false)) {
-                    await badge.click();
-                } else {
-                    await page.keyboard.press(currentLetter.toLowerCase());
-                }
+                await badge.click({ timeout: 3000 });
             } catch (e) {
                 await page.keyboard.press(currentLetter.toLowerCase());
             }
             await page.waitForTimeout(300);
             await page.keyboard.press('Enter');
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(400);
 
             console.log('  ↳ [الخطوة 5] تاريخ الفعالية...');
-            await fillDateField(page, 'MM', month);
-            await page.waitForTimeout(300);
-            await fillDateField(page, 'DD', day);
-            await page.waitForTimeout(300);
-            await fillDateField(page, 'YYYY', year);
-            await page.waitForTimeout(300);
+            const clickAndType = async (placeholder, value) => {
+                try {
+                    const input = page.getByPlaceholder(placeholder).first();
+                    await input.click({ timeout: 3000 });
+                    await page.keyboard.press('Control+A');
+                    await page.keyboard.press('Backspace');
+                    await typeReal(page, value);
+                    await page.waitForTimeout(200);
+                    const actual = await input.inputValue().catch(() => null);
+                    if (!actual || !actual.includes(String(parseInt(value, 10)))) {
+                        console.log(`⚠️ حقل "${placeholder}" لم يُعبأ بشكل صحيح، أعيد المحاولة...`);
+                        await input.click({ timeout: 3000 });
+                        await page.keyboard.press('Control+A');
+                        await page.keyboard.press('Backspace');
+                        await typeReal(page, value);
+                        await page.waitForTimeout(200);
+                    }
+                    return true;
+                } catch (e) {
+                    console.log(`⚠️ لم يتم إيجاد حقل placeholder="${placeholder}"`);
+                    return false;
+                }
+            };
+
+            await clickAndType('MM', month);
+            await page.waitForTimeout(250);
+            await clickAndType('DD', day);
+            await page.waitForTimeout(250);
+            await clickAndType('YYYY', year);
+            await page.waitForTimeout(250);
 
             const okClicked = await clickOkButton(page);
             if (!okClicked) {
                 console.log('⚠️ لم أجد زر OK، أضغط Enter...');
                 await page.keyboard.press('Enter');
             }
-            await page.waitForTimeout(600);
+            await page.waitForTimeout(500);
 
             console.log('  ↳ [الخطوة 6] وقت الفعالية...');
             await fillActiveQuestion(page, event.timeStr);
@@ -252,22 +181,15 @@ async function submitEventsToForm(events) {
 
             try {
                 const submitEl = page.getByText('Submit', { exact: true }).first();
-                if (await submitEl.isVisible({ timeout: 2000 }).catch(() => false)) {
-                    await submitEl.click({ force: true });
-                    await page.waitForTimeout(500);
-                }
+                await submitEl.click({ force: true });
+                await page.waitForTimeout(500);
             } catch (e) {}
 
             let confirmed = false;
             try {
-                await page.waitForURL(/thank|thanks|success/i, { timeout: 5000 });
+                await page.getByText(/شكرا|تم استلام|Thank you/i).first().waitFor({ timeout: 3500 });
                 confirmed = true;
-            } catch (e) {
-                try {
-                    await page.waitForSelector('text=/شكرا|تم استلام|Thank you/i', { timeout: 3000 });
-                    confirmed = true;
-                } catch (e2) {}
-            }
+            } catch (e) {}
 
             if (confirmed) {
                 console.log(`✅ تم إرسال الفعالية (ID: ${event.id}) بنجاح.`);
@@ -288,8 +210,7 @@ async function submitEventsToForm(events) {
     console.log(`========================================\n`);
 }
 
-// ==================== الاتصال بـ WOLF ====================
-
+// ===== الاتصال بـ WOLF =====
 service.on('ready', async () => {
     console.log(`✅ متصل بنجاح بـ: ${service.currentSubscriber.nickname}`);
 
