@@ -4,16 +4,15 @@ import { chromium } from 'playwright';
 const { WOLF } = wolfjs;
 const service = new WOLF();
 
-// ==================== ⚙️ البيانات الثابتة (عدّل حسب حاجتك) ====================
+// ==================== ⚙️ البيانات الثابتة ====================
 const TARGET_GROUP = 18432094;
-const TARGET_DATE = "2026-08-10";           // التاريخ المطلوب (YYYY-MM-DD)
+const TARGET_DATE = "2026-08-10";           // التاريخ المطلوب
 const TARGET_MEMBER_ID = 80055399;          // العضوية التي رفعت الفعالية
 const MEMBERSHIP_NUMBER = "224";            // رقم عضويتك الأساسي في النموذج
 const FORM_URL = "https://survey-poll.typeform.com/to/JTsKMIEB";
-const TYPE_DELAY = 40;                      // تأخير بين الأحرف (مللي)
-// =============================================================================
+const TYPE_DELAY = 40;
+// =============================================================
 
-// 🔐 البريد وكلمة المرور تؤخذ من متغيرات البيئة (GitHub Secrets)
 const USER_EMAIL = process.env.U_MAIL;
 const USER_PASSWORD = process.env.U_PASS;
 
@@ -22,11 +21,7 @@ if (!USER_EMAIL || !USER_PASSWORD) {
     process.exit(1);
 }
 
-// ==================== دوال مساعدة محسّنة ====================
-
-/**
- * تنسيق الوقت إلى صيغة 12 ساعة مع AM/PM
- */
+// ==================== دوال مساعدة ====================
 const formatTime = (date) => {
     const h = date.getUTCHours();
     const m = String(date.getUTCMinutes()).padStart(2, '0');
@@ -34,9 +29,6 @@ const formatTime = (date) => {
     return `${h % 12 || 12}:${m} ${ampm}`;
 };
 
-/**
- * كتابة نص مع تأخير بين الأحرف (لمحاكاة الكتابة البشرية)
- */
 const typeReal = async (page, value, { pressEnterAfter = false } = {}) => {
     await page.keyboard.type(String(value), { delay: TYPE_DELAY });
     if (pressEnterAfter) {
@@ -45,23 +37,17 @@ const typeReal = async (page, value, { pressEnterAfter = false } = {}) => {
     }
 };
 
-/**
- * ملء الحقل النشط الحالي (بعد التأكد من وجوده والتركيز عليه)
- * - يحاول انتظار وجود عنصر نشط
- * - في حال الفشل، يضغط على آخر حقل إدخال ظاهر
- */
 const fillActiveQuestion = async (page, value, { pressEnterAfter = true, waitAfter = 500 } = {}) => {
     try {
-        // انتظار ظهور عنصر نشط (input أو textarea)
         await page.waitForFunction(() => {
             const el = document.activeElement;
-            return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+            return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.getAttribute('contenteditable') === 'true');
         }, { timeout: 8000 });
-        const active = page.locator('input:focus, textarea:focus').first();
+        const active = page.locator('input:focus, textarea:focus, [contenteditable="true"]:focus').first();
         await active.waitFor({ state: 'visible', timeout: 5000 });
     } catch (e) {
         console.log('⚠️ لم يتم رصد فوكس تلقائي، أحاول الضغط على آخر حقل ظاهر...');
-        const fallback = page.locator('input:visible, textarea:visible').last();
+        const fallback = page.locator('input:visible, textarea:visible, [contenteditable="true"]:visible').last();
         await fallback.click({ timeout: 8000 });
     }
     await typeReal(page, value);
@@ -72,9 +58,6 @@ const fillActiveQuestion = async (page, value, { pressEnterAfter = true, waitAft
     await page.waitForTimeout(waitAfter);
 };
 
-/**
- * محاولة الضغط على زر OK (إن وجد)
- */
 const clickOkButton = async (page) => {
     try {
         const okButton = page.getByRole('button', { name: /^OK$/i }).first();
@@ -85,45 +68,72 @@ const clickOkButton = async (page) => {
     }
 };
 
-/**
- * ملء حقول التاريخ بطريقة أكثر مرونة
- * - تبحث عن حقل يحتوي على النص المطلوب في placeholder (مطابقة جزئية)
- * - تستخدم page.fill لتعبئة القيمة (أكثر دقة من الكتابة)
- * - في حال عدم العثور على الحقل، تحاول كتابة القيمة ثم الضغط على Tab
- */
 const fillDateField = async (page, placeholderPart, value) => {
-    // محاولة مطابقة جزئية لـ placeholder (بغض النظر عن حالة الأحرف)
-    const selector = `input[placeholder*="${placeholderPart}" i]:visible`;
-    try {
-        const input = await page.waitForSelector(selector, { timeout: 4000 });
-        await input.click({ clickCount: 3 }); // تحديد النص الموجود
-        await page.keyboard.press('Backspace'); // مسح ما تم تحديده
-        await input.fill(value);
-        await page.waitForTimeout(200);
-        // تحقق من القيمة المدخلة
-        const actual = await input.inputValue();
-        if (actual !== value) {
-            console.log(`⚠️ إعادة محاولة تعبئة ${placeholderPart}`);
+    const selectors = [
+        `input[placeholder*="${placeholderPart}" i]:visible`,
+        `input[placeholder*="${placeholderPart.toLowerCase()}" i]:visible`
+    ];
+    for (const selector of selectors) {
+        try {
+            const input = await page.waitForSelector(selector, { timeout: 4000 });
             await input.click({ clickCount: 3 });
             await page.keyboard.press('Backspace');
             await input.fill(value);
-        }
-        return true;
-    } catch (e) {
-        console.log(`⚠️ لم يتم إيجاد حقل placeholder="${placeholderPart}"، أحاول الكتابة مباشرة...`);
-        // محاولة كتابة القيمة في الحقل النشط ثم Tab
-        try {
-            await page.keyboard.type(value);
-            await page.keyboard.press('Tab');
             await page.waitForTimeout(200);
-        } catch (e2) {
-            console.log(`❌ فشلت محاولة تعبئة ${placeholderPart} بالكامل.`);
-        }
+            const actual = await input.inputValue();
+            if (actual === value) return true;
+            // إعادة المحاولة مرة أخرى
+            await input.click({ clickCount: 3 });
+            await page.keyboard.press('Backspace');
+            await input.fill(value);
+            await page.waitForTimeout(200);
+            return true;
+        } catch (e) { /* جرب المحدد التالي */ }
+    }
+    console.log(`⚠️ لم يتم إيجاد حقل placeholder="${placeholderPart}"، أحاول الكتابة مباشرة...`);
+    try {
+        await page.keyboard.type(value);
+        await page.keyboard.press('Tab');
+        await page.waitForTimeout(200);
+        return true;
+    } catch (e2) {
+        console.log(`❌ فشلت محاولة تعبئة ${placeholderPart}.`);
         return false;
     }
 };
 
-// ==================== الدالة الرئيسية لرفع الفعاليات ====================
+/**
+ * دالة جديدة للانتظار حتى ظهور أي عنصر إدخال في النموذج
+ * تستخدم عدة محددات وتعيد العنصر الأول الذي يظهر
+ */
+const waitForAnyInput = async (page, timeout = 15000) => {
+    const selectors = [
+        'input:visible',
+        'textarea:visible',
+        '[contenteditable="true"]:visible',
+        '[role="textbox"]:visible',
+        'div[contenteditable="true"]:visible'
+    ];
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+        for (const selector of selectors) {
+            try {
+                const element = await page.$(selector);
+                if (element) {
+                    // تحقق من أنه مرئي وقابل للتفاعل
+                    const isVisible = await element.isVisible();
+                    if (isVisible) {
+                        return element;
+                    }
+                }
+            } catch (e) { /* تجاهل */ }
+        }
+        await page.waitForTimeout(500);
+    }
+    return null;
+};
+
+// ==================== الدالة الرئيسية ====================
 
 async function submitEventsToForm(events) {
     if (events.length === 0) {
@@ -151,20 +161,36 @@ async function submitEventsToForm(events) {
         try {
             console.log('  ↳ [الخطوة 0] فتح صفحة النموذج...');
             await page.goto(FORM_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(800);
+            await page.waitForTimeout(1000);
 
-            // في حال وجود زر بدء
-            try {
-                const startButton = page.getByText('سجل برنامجك الآن', { exact: false });
-                if (await startButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-                    await startButton.click();
-                    await page.waitForTimeout(500);
-                }
-            } catch (e) {}
+            // محاولة الضغط على أي زر بدء (مثل "سجل برنامجك الآن")
+            const startButtonTexts = ['سجل برنامجك الآن', 'Start', 'Begin', 'Get started', 'ابدأ'];
+            for (const text of startButtonTexts) {
+                try {
+                    const btn = page.getByText(text, { exact: false }).first();
+                    if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+                        await btn.click();
+                        console.log('  ↳ تم الضغط على زر البدء.');
+                        await page.waitForTimeout(800);
+                        break;
+                    }
+                } catch (e) { /* تجاهل */ }
+            }
 
-            // انتظر ظهور أول حقل إدخال ليكون النموذج جاهزاً
-            await page.waitForSelector('input:visible, textarea:visible', { timeout: 10000 });
+            // انتظر ظهور أي حقل إدخال باستخدام الدالة الجديدة
+            console.log('  ↳ في انتظار ظهور حقول النموذج...');
+            const inputElement = await waitForAnyInput(page, 15000);
+            if (!inputElement) {
+                // في حال عدم العثور على أي حقل، نأخذ لقطة ونطبع جزء من الـ HTML للتشخيص
+                const screenshot = await page.screenshot({ path: `debug_${event.id}.png` });
+                console.log(`⚠️ لم يتم العثور على أي حقل إدخال في النموذج. تم حفظ لقطة للصفحة: debug_${event.id}.png`);
+                const html = await page.content();
+                console.log('📄 أول 500 حرف من الـ HTML:', html.substring(0, 500));
+                throw new Error('لم يتم العثور على حقل إدخال في النموذج');
+            }
+            console.log('  ↳ تم العثور على حقل إدخال.');
 
+            // بقية الخطوات (كما هي)
             console.log('  ↳ [الخطوة 1] رقم العضوية...');
             await fillActiveQuestion(page, MEMBERSHIP_NUMBER);
 
@@ -200,7 +226,6 @@ async function submitEventsToForm(events) {
             await page.waitForTimeout(500);
 
             console.log('  ↳ [الخطوة 5] تاريخ الفعالية...');
-            // استخدام الدالة المحسّنة لتعبئة التاريخ
             await fillDateField(page, 'MM', month);
             await page.waitForTimeout(300);
             await fillDateField(page, 'DD', day);
@@ -208,7 +233,6 @@ async function submitEventsToForm(events) {
             await fillDateField(page, 'YYYY', year);
             await page.waitForTimeout(300);
 
-            // الضغط على OK أو Enter
             const okClicked = await clickOkButton(page);
             if (!okClicked) {
                 console.log('⚠️ لم أجد زر OK، أضغط Enter...');
@@ -226,7 +250,6 @@ async function submitEventsToForm(events) {
             await page.keyboard.press('Control+Enter');
             await page.waitForTimeout(800);
 
-            // محاولة الضغط على زر Submit إن وجد
             try {
                 const submitEl = page.getByText('Submit', { exact: true }).first();
                 if (await submitEl.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -235,14 +258,11 @@ async function submitEventsToForm(events) {
                 }
             } catch (e) {}
 
-            // التحقق من النجاح باستخدام تغيير URL أو ظهور رسالة شكر
             let confirmed = false;
             try {
-                // انتظر تغيير URL إلى صفحة الشكر (قد تحتوي على thank أو thanks أو success)
                 await page.waitForURL(/thank|thanks|success/i, { timeout: 5000 });
                 confirmed = true;
             } catch (e) {
-                // إذا لم يتغير URL، تحقق من وجود نص شكر
                 try {
                     await page.waitForSelector('text=/شكرا|تم استلام|Thank you/i', { timeout: 3000 });
                     confirmed = true;
@@ -252,12 +272,10 @@ async function submitEventsToForm(events) {
             if (confirmed) {
                 console.log(`✅ تم إرسال الفعالية (ID: ${event.id}) بنجاح.`);
             } else {
-                console.log(`⚠️ لم تظهر صفحة الشكر للفعالية (ID: ${event.id}). قد يكون الإرسال ناجحاً لكن النموذج لم ينتقل.`);
+                console.log(`⚠️ لم تظهر صفحة الشكر للفعالية (ID: ${event.id}).`);
             }
         } catch (err) {
             console.error(`❌ خطأ أثناء رفع الفعالية (ID: ${event.id}):`, err.message);
-            // يمكن طباعة عنوان الصفحة أو الـ HTML للمساعدة في التصحيح
-            // console.log(await page.content());
         } finally {
             await page.close();
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -278,7 +296,6 @@ service.on('ready', async () => {
     try {
         console.log(`🔍 جاري فحص وجلب فعاليات تاريخ: ${TARGET_DATE} للعضوية: ${TARGET_MEMBER_ID}...`);
 
-        // جلب قائمة الفعاليات
         const listResponse = await service.websocket.emit('group event list', {
             id: TARGET_GROUP,
             languageId: 1,
@@ -290,7 +307,6 @@ service.on('ready', async () => {
             return process.exit();
         }
 
-        // تصفية الفعاليات حسب التاريخ المطلوب
         const dayEventIds = [];
         for (const ev of listResponse.body) {
             const info = ev.additionalInfo || {};
@@ -305,14 +321,12 @@ service.on('ready', async () => {
             dayEventIds.push({ id: ev.id, dateStr, start: ksaStart });
         }
 
-        // جلب التفاصيل الكاملة لكل فعالية
         const fullEvents = await service.event.getByIds(dayEventIds.map(e => e.id), true);
         const foundEvents = [];
 
         fullEvents.forEach((fullEv) => {
             const meta = dayEventIds.find(e => e.id === fullEv.id);
             if (!meta) return;
-            // التأكد من أن الفعالية مرفوعة بواسطة العضوية المستهدفة
             if (fullEv.createdBy !== null && parseInt(fullEv.createdBy) === TARGET_MEMBER_ID) {
                 foundEvents.push({
                     id: fullEv.id,
@@ -335,5 +349,4 @@ service.on('ready', async () => {
     process.exit();
 });
 
-// بدء تسجيل الدخول
 service.login(USER_EMAIL, USER_PASSWORD);
