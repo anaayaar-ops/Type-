@@ -6,7 +6,7 @@ const service = new WOLF();
 
 // ==================== ⚙️ البيانات الثابتة (عدّل حسب حاجتك) ====================
 const TARGET_GROUP = 18432094;
-const TARGET_DATE = "2026-08-25";           // التاريخ المطلوب (YYYY-MM-DD)
+const TARGET_DATE = "2026-08-26";           // التاريخ المطلوب (YYYY-MM-DD)
 const TARGET_MEMBER_ID = 80055399;          // العضوية التي رفعت الفعالية
 const MEMBERSHIP_NUMBER = "224";            // رقم عضويتك الأساسي في النموذج
 const FORM_URL = "https://survey-poll.typeform.com/to/JTsKMIEB";
